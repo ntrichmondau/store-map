@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8"/>
-<title>Retail Network Map</title>
+<title>Retail Network Map (Stable)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -16,16 +16,14 @@
 body { margin:0; font-family:Arial; }
 #map { height:100vh; width:100%; }
 
-#panel {
+#panel{
   position:absolute;
   top:10px; left:10px;
   background:white;
-  padding:12px;
+  padding:10px;
   z-index:999;
-  width:220px;
-  font-size:13px;
   border-radius:8px;
-  box-shadow:0 2px 10px rgba(0,0,0,0.2);
+  width:220px;
 }
 </style>
 </head>
@@ -33,11 +31,8 @@ body { margin:0; font-family:Arial; }
 <body>
 
 <div id="panel">
-<h3>Store Dashboard</h3>
-<div id="stats">Loading...</div>
-<hr>
-<input type="file" id="csv" />
-<small>Upload CSV: name,address</small>
+<h3>Store Map</h3>
+<div id="stats"></div>
 </div>
 
 <div id="map"></div>
@@ -51,118 +46,73 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
 }).addTo(map);
 
 // clusters
-const jbCluster = L.markerClusterGroup();
-const ggCluster = L.markerClusterGroup();
-map.addLayer(jbCluster);
-map.addLayer(ggCluster);
+const jb = L.markerClusterGroup();
+const gg = L.markerClusterGroup();
+map.addLayer(jb);
+map.addLayer(gg);
 
-// stats
-let stats = { total:0, jb:0, gg:0, states:{} };
-
-// store list
+// REAL coordinates (no geocoding needed)
 const stores = [
-["JB Hi-Fi HOME Carseldine","Carseldine Homemakers Centre, Bald Hills QLD"],
-["The Good Guys Townsville","30-44 Ironbark Close, Douglas QLD"],
-["The Good Guys Browns Plains","65 Browns Plains Rd, Browns Plains QLD"],
-["The Good Guys Bundaberg","106 Takalvan St, Bundaberg QLD"],
-["The Good Guys Mackay","13-17 Upton St, Mackay QLD"],
-["The Good Guys Cairns","285 Mulgrave Rd, Cairns QLD"],
-["The Good Guys Capalaba","Redland Bay Rd, Capalaba QLD"],
-["JB Hi-Fi HOME Garbutt","103 Duckworth St, Garbutt QLD"],
-["The Good Guys Garbutt","103 Duckworth St, Garbutt QLD"],
-["The Good Guys Helensvale","Helensvale QLD"],
-["The Good Guys Hervey Bay","Boat Harbour Dr, Pialba QLD"],
-["The Good Guys Booval","Brisbane Rd, Booval QLD"],
-["The Good Guys Loganholme","Pacific Hwy, Loganholme QLD"],
-["JB Hi-Fi HOME Lutwyche","Lutwyche Rd, QLD"],
-
-["JB Hi-Fi HOME Macgregor","Kessels Rd, Macgregor QLD"],
-["The Good Guys North Lakes","North Lakes QLD"],
-["The Good Guys Maroochydore","Plaza Parade, Maroochydore QLD"],
-["JB Hi-Fi HOME Morayfield","Morayfield Rd, QLD"],
-["The Good Guys Rockhampton","Yaamba Rd, QLD"],
-["JB Hi-Fi North Lakes","North Lakes Dr, QLD"],
-["The Good Guys Oxley","Ipswich Rd, Oxley QLD"],
-["JB Hi-Fi HOME Birtinya","Nexus Dr, Birtinya QLD"],
-["JB Hi-Fi HOME Robina","Christine Ave, Robina QLD"],
-["The Good Guys Tingalpa","Manly Rd, Tingalpa QLD"],
-["The Good Guys Toowoomba","Ruthven St, Toowoomba QLD"],
-["The Good Guys Townsville","Dalrymple Rd, Garbutt QLD"],
-["The Good Guys Kawana","Nicklin Way, Warana QLD"]
+["JB Hi-Fi Carseldine",-27.3502,153.0156],
+["Good Guys Townsville",-19.3032,146.7520],
+["Good Guys Browns Plains",-27.6603,153.0400],
+["Good Guys Bundaberg",-24.8841,152.3500],
+["Good Guys Mackay",-21.1360,149.1860],
+["Good Guys Cairns",-16.9490,145.7700],
+["Good Guys Capalaba",-27.5220,153.1910],
+["JB Garbutt",-19.2830,146.7780],
+["Good Guys Garbutt",-19.2830,146.7780],
+["Good Guys Helensvale",-27.9180,153.3310],
+["Good Guys Hervey Bay",-25.2860,152.8380],
+["Good Guys Booval",-27.6150,152.7890],
+["Good Guys Loganholme",-27.6760,153.1850],
+["JB Lutwyche",-27.4220,153.0320],
+["JB Macgregor",-27.5590,153.0630],
+["Good Guys North Lakes",-27.2240,153.0200],
+["Good Guys Maroochydore",-26.6570,153.0890],
+["JB Morayfield",-27.1080,152.9490],
+["Good Guys Rockhampton",-23.3570,150.5190],
+["JB North Lakes",-27.2240,153.0200],
+["Good Guys Oxley",-27.5600,152.9700],
+["JB Birtinya",-26.7450,153.1190],
+["JB Robina",-28.0700,153.3930],
+["Good Guys Tingalpa",-27.4730,153.1340],
+["Good Guys Toowoomba",-27.5600,151.9530],
+["Good Guys Townsville 2",-19.3150,146.7680],
+["Good Guys Kawana",-26.7180,153.1230]
 ];
 
-// geocode
-async function geo(q){
-  const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q+", Australia")}`);
-  const d=await r.json();
-  return d?.[0] ? [d[0].lat,d[0].lon] : null;
-}
+let bounds=[];
 
-function renderStats(){
-  document.getElementById("stats").innerHTML = `
-  Total Stores: ${stats.total}<br>
-  JB Hi-Fi: ${stats.jb}<br>
-  Good Guys: ${stats.gg}<br>
-  `;
-}
+let jbCount=0, ggCount=0;
 
-// drive-time rings (approx)
-function drawRings(lat,lng){
-  L.circle([lat,lng],{radius:10000,color:'green',fill:false}).addTo(map);
-  L.circle([lat,lng],{radius:20000,color:'orange',fill:false}).addTo(map);
-  L.circle([lat,lng],{radius:30000,color:'red',fill:false}).addTo(map);
-}
+stores.forEach(s=>{
+  const name=s[0], lat=s[1], lng=s[2];
 
-async function load(){
-  let bounds=[];
+  const isJB=name.includes("JB");
 
-  for(let s of stores){
-    const name=s[0], addr=s[1];
-    const c=await geo(addr);
-    if(!c) continue;
+  const marker=L.marker([lat,lng]).bindPopup(`
+    <b>${name}</b><br>
+    <a target="_blank"
+    href="https://www.google.com/maps?q=${lat},${lng}">
+    Open in Google Maps</a>
+  `);
 
-    const isJB=name.includes("JB");
+  if(isJB){ jb.addLayer(marker); jbCount++; }
+  else { gg.addLayer(marker); ggCount++; }
 
-    const marker=L.marker(c).bindPopup(`
-      <b>${name}</b><br>${addr}<br><br>
-      <a target="_blank"
-      href="https://www.google.com/maps?q=${c[0]},${c[1]}">
-      Open in Google Maps</a>
-    `);
-
-    if(isJB){ jbCluster.addLayer(marker); stats.jb++; }
-    else { ggCluster.addLayer(marker); stats.gg++; }
-
-    stats.total++;
-
-    bounds.push(c);
-    drawRings(parseFloat(c[0]),parseFloat(c[1]));
-
-    await new Promise(r=>setTimeout(r,600));
-  }
-
-  map.fitBounds(bounds);
-  renderStats();
-}
-
-load();
-
-// CSV upload
-document.getElementById('csv').addEventListener('change',async e=>{
-  const file=e.target.files[0];
-  const text=await file.text();
-  const rows=text.split("\n");
-
-  for(let r of rows){
-    const [name,addr]=r.split(",");
-    if(!addr) continue;
-
-    const c=await geo(addr);
-    if(c){
-      L.marker(c).addTo(map).bindPopup(name);
-    }
-  }
+  bounds.push([lat,lng]);
 });
+
+map.fitBounds(bounds);
+
+// stats
+document.getElementById("stats").innerHTML = `
+JB Hi-Fi: ${jbCount}<br>
+Good Guys: ${ggCount}<br>
+Total: ${stores.length}
+`;
+
 </script>
 
 </body>
