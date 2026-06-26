@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Retail Network Intelligence Map</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+<script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+
+<style>
+body { margin:0; font-family:Arial; }
+#map { height:100vh; width:100%; }
+
+#panel {
+  position:absolute;
+  top:10px; left:10px;
+  background:white;
+  padding:12px;
+  z-index:999;
+  width:220px;
+  font-size:13px;
+  border-radius:8px;
+  box-shadow:0 2px 10px rgba(0,0,0,0.2);
+}
+
+.ring {
+  stroke-width: 1;
+  fill-opacity: 0.08;
+}
+</style>
+</head>
+
+<body>
+
+<div id="panel">
+<h3>Store Dashboard</h3>
+<div id="stats">Loading...</div>
+<hr>
+<input type="file" id="csv" />
+<small>Upload CSV: name,address</small>
+</div>
+
+<div id="map"></div>
+
+<script>
+
+const map = L.map('map').setView([-25.5,133],5);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  attribution:'&copy; OpenStreetMap'
+}).addTo(map);
+
+// clusters
+const jb = L.markerClusterGroup();
+const gg = L.markerClusterGroup();
+map.addLayer(jb);
+map.addLayer(gg);
+
+// heatmap
+let heat = [];
+
+// KPI tracking
+let stats = {
+  total:0,
+  jb:0,
+  gg:0,
+  states:{}
+};
+
+// store list
+const stores = [
+["JB Hi-Fi HOME Carseldine","Carseldine Homemakers Centre, Bald Hills QLD"],
+["The Good Guys Townsville","30-44 Ironbark Close, Douglas QLD"],
+["The Good Guys Browns Plains","65 Browns Plains Rd, QLD"],
+["The Good Guys Bundaberg","106 Takalvan St, Bundaberg QLD"],
+["The Good Guys Mackay","13-17 Upton St, Mackay QLD"],
+["The Good Guys Cairns","285 Mulgrave Rd, Cairns QLD"],
+["The Good Guys Capalaba","Redland Bay Rd, Capalaba QLD"],
+["JB Hi-Fi HOME Garbutt","103 Duckworth St, Garbutt QLD"],
+["The Good Guys Garbutt","103 Duckworth St, Garbutt QLD"],
+["The Good Guys Helensvale","Helensvale QLD"],
+["The Good Guys Hervey Bay","Boat Harbour Dr, Pialba QLD"],
+["The Good Guys Booval","Brisbane Rd, Booval QLD"],
+["The Good Guys Loganholme","Pacific Hwy, Loganholme QLD"],
+["JB Hi-Fi HOME Lutwyche","Lutwyche Rd, QLD"],
+
+["JB Hi-Fi HOME Macgregor","Kessels Rd, Macgregor QLD"],
+["The Good Guys North Lakes","North Lakes QLD"],
+["The Good Guys Maroochydore","Plaza Parade, Maroochydore QLD"],
+["JB Hi-Fi HOME Morayfield","Morayfield Rd, QLD"],
+["The Good Guys Rockhampton","Yaamba Rd, QLD"],
+["JB Hi-Fi North Lakes","North Lakes Dr, QLD"],
+["The Good Guys Oxley","Ipswich Rd, Oxley QLD"],
+["JB Hi-Fi HOME Birtinya","Nexus Dr, Birtinya QLD"],
+["JB Hi-Fi HOME Robina","Christine Ave, Robina QLD"],
+["The Good Guys Tingalpa","Manly Rd, Tingalpa QLD"],
+["The Good Guys Toowoomba","Ruthven St, Toowoomba QLD"],
+["The Good Guys Townsville","Dalrymple Rd, Garbutt QLD"],
+["The Good Guys Kawana","Nicklin Way, Warana QLD"]
+];
+
+// geocode
+async function geo(q){
+  const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q+", Australia")}`);
+  const d=await r.json();
+  return d?.[0] ? [d[0].lat,d[0].lon] : null;
+}
+
+// update dashboard
+function renderStats(){
+  document.getElementById("stats").innerHTML = `
+  Total Stores: ${stats.total}<br>
+  JB Hi-Fi: ${stats.jb}<br>
+  Good Guys: ${stats.gg}<br>
+  `;
+}
+
+// draw 10/20/30 min radius approx
+function drawRings(lat,lng){
+  L.circle([lat,lng],{radius:10000,color:'green',fill:true}).addTo(map);
+  L.circle([lat,lng],{radius:20000,color:'orange',fill:true}).addTo(map);
+  L.circle([lat,lng],{radius:30000,color:'red',fill:true}).addTo(map);
+}
+
+async function load(){
+  let bounds=[];
+
+  for(let s of stores){
+    const name=s[0], addr=s[1];
+    const c=await geo(addr);
+    if(!c) continue;
+
+    const isJB=name.includes("JB");
+
+    const m=L.marker(c).bindPopup(`
+      <b>${name}</b><br>${addr}<br><br>
+      <a target="_blank"
+      href="https://www.google.com/maps?q=${c[0]},${c[1]}">Open in Maps</a>
+    `);
+
+    if(isJB){ jb.addLayer(m); stats.jb++; }
+    else { gg.addLayer(m); stats.gg++; }
+
+    stats.total++;
+
+    heat.push([c[0],c[1],1]);
+    bounds.push(c);
+
+    drawRings(parseFloat(c[0]),parseFloat(c[1]));
+
+    await new Promise(r=>setTimeout(r,600));
+  }
+
+  map.fitBounds(bounds);
+  L.heatLayer(heat,{radius:25}).addTo(map);
+
+  renderStats();
+}
+
+load();
+
+// CSV upload (name,address)
+document.getElementById('csv').addEventListener('change',async e=>{
+  const file=e.target.files[0];
+  const text=await file.text();
+
+  const rows=text.split("\n");
+
+  for(let r of rows){
+    const [name,addr]=r.split(",");
+    if(!addr) continue;
+
+    const c=await geo(addr);
+    if(c){
+      L.marker(c).addTo(map).bindPopup(name);
+    }
+  }
+});
+</script>
+
+</body>
+</html>
